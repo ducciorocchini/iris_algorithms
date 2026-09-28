@@ -2,11 +2,10 @@
 title: "Spectral Scatterplot of Sentinel-2 Pixels"
 author: "Iris Nana Obeng"
 date: "`r Sys.Date()`"
-output:
-  html_document:
-    toc: true
-    toc_float: true
-    number_sections: false
+output: github_document
+editor_options: 
+  markdown: 
+    wrap: 70
 ---
 
 ```{r setup, include=FALSE}
@@ -450,7 +449,7 @@ marginal_plot
 
 
 ggsave(
-  file.path(project_root, "figures", "spectral_scatterplot_marginals.png"),
+  file.path(project_root, "spectral_scatterplot_marginals.png"),
   plot   = marginal_plot,
   width  = 9,
   height = 7,
@@ -458,6 +457,7 @@ ggsave(
 )
 
 ```
+
 
 # Interpreting the scatterplot
 
