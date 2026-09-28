@@ -23,12 +23,10 @@ The figure has:
 
 ```text
 iris_algorithms/
-├── scripts/
-│   ├── scatter_plot.R        
-│   └── Scatter_Plot.Rmd      
-├── figures/
-│   └── spectral_scatterplot_marginals.png
-└── README.md
+├── README.md
+├── scatter_plot.R
+├── Scatter_Plot.Rmd
+└── spectral_scatterplot_marginals.png
 ```
 
 ## The data
@@ -55,7 +53,7 @@ Four 10 m bands are used:
    groups and seed 42. NIR is deliberately excluded from clustering so that
    the final scatterplot can show the resulting groups against a spectral
    band that was not used to create them.
-5. A 300 pixels sample was used for the central scatterplot. The classification and
+5. A 300-pixel sample was used for the central scatterplot. The classification and
    marginal density curves use the full dataset.
 6. Plot: Blue reflectance against NIR reflectance, coloured and shaped
    by group.
@@ -74,7 +72,7 @@ install.packages(c("terra", "ggplot2", "dplyr", "cowplot", "imageRy"))
 
 ## The figure
 
-![Spectral scatterplot with marginal densities](figures/spectral_scatterplot_marginals.png)
+![Spectral scatterplot with marginal densities](spectral_scatterplot_marginals.png)
 
 ## What the groups mean
 
