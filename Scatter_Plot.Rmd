@@ -1,0 +1,531 @@
+---
+title: "Spectral Scatterplot of Sentinel-2 Pixels"
+author: "Iris Nana Obeng"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Introduction
+
+This project uses Sentinel-2B multispectral imagery to explore the spectral
+characteristics of pixels within a selected 4 km × 4 km study area.
+
+The analysis uses four 10 m Sentinel-2 bands:
+
+* **B02 (Blue, ~490 nm)** — used on the x-axis and for clustering
+* **B03 (Green, ~560 nm)** — used for clustering
+* **B04 (Red, ~665 nm)** — used for clustering
+* **B08 (Near-infrared, ~842 nm)** — used on the y-axis, and deliberately
+  excluded from the clustering so that the visualisation shows the clusters
+  in a band the classifier did not use.
+
+An unsupervised k-means classification is applied to the Blue, Green, and Red
+reflectance bands. The resulting clusters are then visualised using a
+Blue–NIR scatterplot.
+
+The final figure follows the marginal-density approach described by
+Claus O. Wilke in *Fundamentals of Data Visualization*. Density curves are
+placed directly above and to the right of the scatterplot. The top density
+is directly labelled with the cluster identities, replacing the need for a
+conventional legend.
+
+# Packages
+
+```{r packages, message=FALSE, warning=FALSE}
+library(terra)
+library(ggplot2)
+library(dplyr)
+library(imageRy)
+library(cowplot)
+```
+
+# Load Sentinel-2 bands
+
+The Sentinel-2B tile used in this analysis is T30NXN, acquired on
+26 January 2022.
+
+```{r load-bands}
+project_root <- "/Users/irisnanaobeng/Desktop/Scatter Plot Algorithim/Scatter_Plot_Algorithim"
+
+blue  <- rast(file.path(project_root, "T30NXN_20220126T102209_B02_10m.jp2"))
+green <- rast(file.path(project_root, "T30NXN_20220126T102209_B03_10m.jp2"))
+red   <- rast(file.path(project_root, "T30NXN_20220126T102209_B04_10m.jp2"))
+nir   <- rast(file.path(project_root, "T30NXN_20220126T102209_B08_10m.jp2"))
+```
+
+# Combine bands
+
+```{r combine-bands}
+sentinel_stack <- c(blue, green, red, nir)
+
+names(sentinel_stack) <- c(
+  "Blue",
+  "Green",
+  "Red",
+  "NIR"
+)
+```
+
+# The study area
+
+The analysis uses a 4 km × 4 km area within the Sentinel-2 tile. The crop
+begins approximately 60 km from the lower-left corner of the tile in both
+the x and y directions.
+
+```{r crop}
+crop_extent <- ext(
+  xmin(sentinel_stack) + 60000,
+  xmin(sentinel_stack) + 64000,
+  ymin(sentinel_stack) + 60000,
+  ymin(sentinel_stack) + 64000
+)
+
+sentinel_crop <- crop(sentinel_stack, crop_extent)
+```
+
+# Scale reflectance
+
+Sentinel-2 reflectance values are scaled by 10,000. They are converted here
+to approximately 0–1 reflectance values.
+
+```{r scale-reflectance}
+sentinel_crop <- sentinel_crop / 10000
+```
+
+# The clustering image
+
+The clustering uses the Blue, Green and Red bands. NIR is deliberately
+excluded so it can be used as the y-axis of the scatterplot.
+
+```{r clustering-stack}
+rgb_stack <- sentinel_crop[[c("Blue", "Green", "Red")]]
+```
+
+# K-means clustering
+
+```{r classification}
+set.seed(42)
+
+classified <- imageRy::im.classify(
+  rgb_stack,
+  num_clusters = 3,
+  seed = 42,
+  do_plot = FALSE
+)
+```
+
+The resulting clusters represent groups of pixels with similar values in the
+input bands. The numerical cluster IDs do not have an inherent land-cover
+meaning.
+
+# Pixel data
+
+```{r pixel-data}
+pixel_data <- data.frame(
+  Blue    = as.numeric(values(sentinel_crop[["Blue"]],  mat = FALSE)),
+  NIR     = as.numeric(values(sentinel_crop[["NIR"]],   mat = FALSE)),
+  Cluster = as.numeric(values(classified,               mat = FALSE))
+)
+
+pixel_data <- pixel_data |>
+  filter(
+    !is.na(Blue),
+    !is.na(NIR),
+    !is.na(Cluster)
+  )
+```
+
+# Descriptive cluster labels
+
+The numerical cluster IDs produced by k-means are arbitrary. To make the
+figure easier to interpret, the clusters are renamed A, B and C according to
+their abundance.
+
+```{r cluster-labels}
+cluster_sizes <- pixel_data |>
+  count(Cluster, sort = TRUE)
+
+cluster_labels <- cluster_sizes$Cluster
+
+pixel_data <- pixel_data |>
+  mutate(
+    Cluster_Label = case_when(
+      Cluster == cluster_labels[1] ~ "A",
+      Cluster == cluster_labels[2] ~ "B",
+      Cluster == cluster_labels[3] ~ "C"
+    )
+  )
+```
+
+The labels A, B and C are descriptive identifiers only. They are not
+validated land-cover classes.
+
+# Sample pixels for the scatterplot
+
+The full dataset contains approximately 160,000 10 m pixels. To keep the
+central scatterplot readable, 300 pixels are randomly sampled for display.
+
+The sampling affects the scatterplot only. The classification and the
+marginal density distributions use the full classified dataset.
+
+```{r sample-pixels}
+set.seed(1)
+
+plot_data <- pixel_data |>
+  slice_sample(n = 300)
+```
+
+# Colours and shapes
+
+```{r palette}
+cluster_colours <- c(
+  A = "#011959",
+  B = "#D68A00",
+  C = "#A3311D"
+)
+
+cluster_shapes <- c(
+  A = 16,
+  B = 17,
+  C = 15
+)
+```
+
+# Central scatterplot
+
+```{r main-scatter}
+main_plot <- ggplot(
+  plot_data,
+  aes(
+    x = Blue,
+    y = NIR
+  )
+) +
+
+  geom_point(
+    aes(
+      colour = Cluster_Label,
+      shape  = Cluster_Label
+    ),
+    size  = 1.8,
+    alpha = 0.6
+  ) +
+
+  scale_colour_manual(
+    values = cluster_colours
+  ) +
+
+  scale_shape_manual(
+    values = cluster_shapes
+  ) +
+
+  labs(
+    title    = "Spectral Scatterplot of Classified Sentinel-2 Pixels",
+    subtitle = "300 sampled pixels with marginal cluster distributions",
+    x        = "Blue reflectance (B02)",
+    y        = "Near-infrared reflectance (B08)"
+  ) +
+
+  theme_minimal(
+    base_size = 13
+  ) +
+
+  theme(
+    legend.position = "none",
+    plot.title      = element_text(face = "bold"),
+    plot.subtitle   = element_text(size = 11)
+  )
+```
+
+# Directly labelled marginal densities
+
+The marginal densities follow the direct-labelling approach described by
+Wilke. The density curves are calculated separately for each cluster and
+then inserted into the margins of the scatterplot.
+
+```{r wilke-marginals, fig.width=9, fig.height=7}
+
+
+blue_dens <- pixel_data |>
+  group_by(Cluster_Label) |>
+  group_modify(~ {
+    d <- density(.x$Blue, na.rm = TRUE)
+    data.frame(Blue = d$x, density = d$y)
+  }) |>
+  ungroup()
+
+
+
+nir_dens <- pixel_data |>
+  group_by(Cluster_Label) |>
+  group_modify(~ {
+    d <- density(.x$NIR, na.rm = TRUE)
+    data.frame(NIR = d$x, density = d$y)
+  }) |>
+  ungroup()
+
+
+
+blue_max <- blue_dens |>
+  group_by(Cluster_Label) |>
+  filter(density == max(density)) |>
+  ungroup()
+
+
+
+blue_labels <- blue_max |>
+  mutate(
+    label = Cluster_Label,
+
+    hjust = case_when(
+      Cluster_Label == "A" ~ 0,
+      Cluster_Label == "B" ~ 0.5,
+      Cluster_Label == "C" ~ 0
+    ),
+
+    vjust = case_when(
+      Cluster_Label == "A" ~ 1,
+      Cluster_Label == "B" ~ 0,
+      Cluster_Label == "C" ~ 1
+    ),
+
+    nudge_x = case_when(
+      Cluster_Label == "A" ~ 0.003,
+      Cluster_Label == "B" ~ 0,
+      Cluster_Label == "C" ~ 0.003
+    ),
+
+    nudge_y = case_when(
+      Cluster_Label == "A" ~ 3,
+      Cluster_Label == "B" ~ 5,
+      Cluster_Label == "C" ~ 3
+    )
+  )
+
+
+xdens <- axis_canvas(
+  main_plot,
+  axis = "x"
+) +
+
+  geom_ribbon(
+    data = blue_dens,
+    aes(
+      x = Blue,
+      ymin = 0,
+      ymax = density,
+      fill = Cluster_Label,
+      group = Cluster_Label
+    ),
+    alpha = 0.35
+  ) +
+
+  geom_line(
+    data = blue_dens,
+    aes(
+      x = Blue,
+      y = density,
+      colour = Cluster_Label,
+      group = Cluster_Label
+    ),
+    linewidth = 0.5
+  ) +
+
+  geom_text(
+    data = blue_labels,
+    aes(
+      x = Blue + nudge_x,
+      y = density + nudge_y,
+      label = label,
+      hjust = hjust,
+      vjust = vjust,
+      colour = Cluster_Label
+    ),
+    size = 13 / .pt,
+    fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+
+  scale_colour_manual(
+    values = cluster_colours,
+    guide = "none"
+  ) +
+
+  scale_fill_manual(
+    values = cluster_colours,
+    guide = "none"
+  ) +
+
+  scale_y_continuous(
+    limits = c(0, max(blue_dens$density) * 1.10),
+    expand = c(0, 0)
+  ) +
+
+  coord_cartesian(clip = "off")
+
+
+
+ydens <- axis_canvas(
+  main_plot,
+  axis = "y",
+  coord_flip = TRUE
+) +
+
+  geom_ribbon(
+    data = nir_dens,
+    aes(
+      x = NIR,
+      ymin = 0,
+      ymax = density,
+      fill = Cluster_Label,
+      group = Cluster_Label
+    ),
+    alpha = 0.35
+  ) +
+
+  geom_line(
+    data = nir_dens,
+    aes(
+      x = NIR,
+      y = density,
+      colour = Cluster_Label,
+      group = Cluster_Label
+    ),
+    linewidth = 0.5
+  ) +
+
+  scale_colour_manual(
+    values = cluster_colours,
+    guide = "none"
+  ) +
+
+  scale_fill_manual(
+    values = cluster_colours,
+    guide = "none"
+  ) +
+
+  scale_y_continuous(
+    limits = c(0, max(nir_dens$density) * 1.05),
+    expand = c(0, 0)
+  ) +
+
+  coord_flip()
+
+
+
+p1 <- insert_xaxis_grob(
+  main_plot + theme(legend.position = "none"),
+  xdens,
+  grid::unit(3 * 14, "pt"),
+  position = "top",
+  clip = "off"
+)
+
+
+p2 <- insert_yaxis_grob(
+  p1,
+  ydens,
+  grid::unit(3 * 14, "pt"),
+  position = "right",
+  clip = "off"
+)
+
+
+
+marginal_plot <- ggdraw(p2)
+
+marginal_plot
+
+
+ggsave(
+  file.path(project_root, "figures", "spectral_scatterplot_marginals.png"),
+  plot   = marginal_plot,
+  width  = 9,
+  height = 7,
+  dpi    = 300
+)
+
+```
+
+# Interpreting the scatterplot
+
+The three clusters occupy different regions of the Blue–NIR spectral space.
+
+The labels A, B and C are descriptive cluster identifiers rather than
+validated land-cover classes. Their spectral characteristics can therefore
+be used to describe patterns in the image, but they should not automatically
+be interpreted as specific land-cover types.
+
+# Interpreting the marginal densities
+
+The **top marginal density** shows the distribution of Blue reflectance within each cluster. The labels A, B and C are positioned relative to the peaks of the corresponding density curves, allowing the reader to associate each letter with its curve without consulting a separate key.
+
+The **right marginal density** shows the distribution of NIR reflectance within each cluster. It is deliberately left unlabelled: because the top marginal already identifies each cluster by letter, labelling the right marginal would be redundant. Colour matching is sufficient to relate the right-hand curves to the labelled curves above.
+
+The top and right marginals use different vertical scales because their densities are computed for different variables. Curve heights should therefore not be compared directly across the two marginals.
+
+
+# Limitations
+
+1. **Unsupervised clustering**
+
+   K-means identifies groups of spectrally similar pixels rather than
+   validated land-cover classes.
+
+2. **Limited clustering variables**
+
+   Only B02, B03 and B04 are used to compute the clusters. Other Sentinel-2
+   bands, such as SWIR, could provide additional spectral information.
+
+3. **Different visualisation space**
+
+   The clusters are calculated using B02, B03 and B04, while the scatterplot
+   displays B02 against B08. The plotted Blue–NIR separation is therefore not
+   the same as the three-band space in which k-means performed the clustering.
+
+4. **Sampled scatterplot**
+
+   The central scatterplot displays 300 randomly sampled pixels.
+
+5. **Full-data marginal distributions**
+
+   The marginal densities are calculated from the full classified dataset.
+
+6. **No accuracy assessment**
+
+   The clusters have not been compared with independent reference data.
+
+# Conclusion
+
+This analysis uses unsupervised k-means clustering to explore spectral
+variation within a Sentinel-2B image.
+
+The final figure is a single visual object: a Blue–NIR scatterplot with
+marginal density distributions attached directly to its top and right
+edges.
+
+The top density carries the cluster labels A, B and C directly on the
+curves. The right density identifies its clusters by colour alone. Together,
+these replace the conventional legend, following Wilke's approach of
+placing labels close to the graphical elements they describe.
+
+# References
+
+Wilke, C. O. (2019). *Fundamentals of Data Visualization: A Primer on
+Making Informative and Compelling Figures*. O'Reilly Media.
+
+
+European Space Agency. *Copernicus Sentinel-2 MSI Level-2A*. Tile T30NXN,
+26 January 2022. 
