@@ -45,7 +45,7 @@ Four 10 m bands are used:
 
 ## Procedure
 
-1. Four bands were loaded ** and combined into one raster.
+1. Four bands were loaded and combined into one raster.
 2. A 4 km × 4 km area was cropped from the tile.
 3. Scale reflectance from Sentinel-2's integer storage (×10,000) to
    approximately the 0–1 range.
