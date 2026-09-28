@@ -296,7 +296,7 @@ print(marginal_plot)
 
 
 ggsave(
-  file.path(project_root, "figures", "spectral_scatterplot_marginals.png"),
+  file.path(project_root, "spectral_scatterplot_marginals.png"),
   plot   = marginal_plot,
   width  = 9,
   height = 7,
