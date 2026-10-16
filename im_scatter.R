@@ -1,43 +1,41 @@
-# im_scatter.R
-# Spectral scatterplot of classified Sentinel-2 pixels with directly 
-#labelled marginal density curves using im.scatter() function.
+# im_scatter_run.R
+# Spectral scatterplot with marginal densities.
+# Uses the four NDVI scenes bundled with imageRy.
 
 
-library(terra)
 library(imageRy)
+library(terra)
 library(ggplot2)
 library(dplyr)
 library(cowplot)
 
 
-# Function 
+
 im.scatter <- function(
-    blue,
-    nir,
+    band_x,
+    band_y,
     classified,
     n_sample      = 300,
     seed_sample   = 1,
     colours       = c(A = "#011959", B = "#D68A00", C = "#A3311D"),
     shapes        = c(A = 16, B = 17, C = 15),
     labels        = c("A", "B", "C"),
-    title         = "Spectral Scatterplot of Classified Sentinel-2 Pixels",
+    title         = "Spectral Scatterplot of Classified NDVI Pixels",
     subtitle      = "300 sampled pixels with marginal cluster distributions",
-    xlab          = "Blue reflectance (B02)",
-    ylab          = "Near-infrared reflectance (B08)",
+    xlab          = "NDVI (winter)",
+    ylab          = "NDVI (summer)",
     marginal_pt   = 3 * 14
 ) {
   
-  # Geometry check 
-  if (!terra::compareGeom(blue, nir,        stopOnError = FALSE) ||
-      !terra::compareGeom(blue, classified, stopOnError = FALSE)) {
-    stop("blue, nir and classified must share the same extent, ",
+  if (!terra::compareGeom(band_x, band_y,     stopOnError = FALSE) ||
+      !terra::compareGeom(band_x, classified, stopOnError = FALSE)) {
+    stop("band_x, band_y and classified must share the same extent, ",
          "resolution and number of pixels.")
   }
   
-  #  Pixel data 
   pixel_data <- data.frame(
-    X       = as.numeric(terra::values(blue,       mat = FALSE)),
-    Y       = as.numeric(terra::values(nir,        mat = FALSE)),
+    X       = as.numeric(terra::values(band_x,     mat = FALSE)),
+    Y       = as.numeric(terra::values(band_y,     mat = FALSE)),
     Cluster = as.numeric(terra::values(classified, mat = FALSE))
   )
   pixel_data <- pixel_data |>
@@ -45,7 +43,6 @@ im.scatter <- function(
   
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
   
-  # Descriptive labels by abundance 
   cluster_sizes <- pixel_data |>
     dplyr::count(Cluster, sort = TRUE)
   
@@ -59,7 +56,6 @@ im.scatter <- function(
       Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
   
-  # Sample for the scatterplot 
   set.seed(seed_sample)
   plot_data <- if (nrow(pixel_data) > n_sample) {
     dplyr::slice_sample(pixel_data, n = n_sample)
@@ -67,7 +63,6 @@ im.scatter <- function(
     pixel_data
   }
   
-  # Central scatterplot 
   main_plot <- ggplot2::ggplot(
     plot_data,
     ggplot2::aes(x = X, y = Y)
@@ -95,7 +90,6 @@ im.scatter <- function(
       )
     )
   
-  # Marginal densities (full data) 
   x_dens <- pixel_data |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::group_modify(~ {
@@ -134,13 +128,12 @@ im.scatter <- function(
         Cluster_Label == "C" ~ 0.003
       ),
       nudge_y = dplyr::case_when(
-        Cluster_Label == "A" ~ 3,
-        Cluster_Label == "B" ~ 5,
-        Cluster_Label == "C" ~ 3
+        Cluster_Label == "A" ~ 1,
+        Cluster_Label == "B" ~ 2,
+        Cluster_Label == "C" ~ 1
       )
     )
   
-  # Marginal axis canvases 
   xdens <- cowplot::axis_canvas(main_plot, axis = "x") +
     ggplot2::geom_ribbon(
       data = x_dens,
@@ -164,7 +157,7 @@ im.scatter <- function(
     ggplot2::scale_colour_manual(values = colours, guide = "none") +
     ggplot2::scale_fill_manual(  values = colours, guide = "none") +
     ggplot2::scale_y_continuous(
-      limits = c(0, max(x_dens$density) * 1.10),
+      limits = c(0, max(x_dens$density) * 1.35),
       expand = c(0, 0)
     ) +
     ggplot2::coord_cartesian(clip = "off")
@@ -190,7 +183,6 @@ im.scatter <- function(
     ) +
     ggplot2::coord_flip()
   
-  # Assembling
   p1 <- cowplot::insert_xaxis_grob(
     main_plot + ggplot2::theme(legend.position = "none"),
     xdens, grid::unit(marginal_pt, "pt"),
@@ -205,48 +197,45 @@ im.scatter <- function(
 }
 
 
-# Data pipeline 
-project_root <- "/Users/irisnanaobeng/Desktop/Scatter Plot Algorithim/Scatter_Plot_Algorithim"
+# --- Load NDVI data ----------------------------------------------------
+ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
+ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
+ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
+ndvi_autumn <- im.import("Sentinel2_NDVI_2020-11-27.tif")
 
-blue  <- rast(file.path(project_root, "T30NXN_20220126T102209_B02_10m.jp2"))
-green <- rast(file.path(project_root, "T30NXN_20220126T102209_B03_10m.jp2"))
-red   <- rast(file.path(project_root, "T30NXN_20220126T102209_B04_10m.jp2"))
-nir   <- rast(file.path(project_root, "T30NXN_20220126T102209_B08_10m.jp2"))
+ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
+names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
 
-sentinel_stack <- c(blue, green, red, nir)
-names(sentinel_stack) <- c("Blue", "Green", "Red", "NIR")
 
-crop_extent <- ext(
-  xmin(sentinel_stack) + 60000,
-  xmin(sentinel_stack) + 64000,
-  ymin(sentinel_stack) + 60000,
-  ymin(sentinel_stack) + 64000
-)
-sentinel_crop <- crop(sentinel_stack, crop_extent) / 10000
-
-rgb_stack <- sentinel_crop[[c("Blue", "Green", "Red")]]
+# --- Cluster on three bands --------------------------------------------
+ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
+names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
 
 set.seed(42)
-classified <- imageRy::im.classify(
-  rgb_stack,
+classified <- im.classify(
+  ndvi_for_clustering,
   num_clusters = 3,
   seed = 42,
   do_plot = FALSE
 )
 
 
+
 figure <- im.scatter(
-  blue       = sentinel_crop[["Blue"]],
-  nir        = sentinel_crop[["NIR"]],
+  band_x     = ndvi_stack[["Winter"]],
+  band_y     = ndvi_stack[["Summer"]],
   classified = classified
 )
 
+
+
 ggsave(
-  file.path(project_root, "spectral_scatterplot_marginals.png"),
+  "ndvi_scatterplot_marginals.png",
   plot   = figure,
   width  = 9,
   height = 7,
   dpi    = 300
 )
+
 
 print(figure)
