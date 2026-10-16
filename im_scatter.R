@@ -20,7 +20,7 @@ im.scatter <- function(
     colours       = c(A = "#011959", B = "#D68A00", C = "#A3311D"),
     shapes        = c(A = 16, B = 17, C = 15),
     labels        = c("A", "B", "C"),
-    title         = "Spectral Scatterplot of Classified NDVI Pixels",
+    title         = "Scatterplot of Classified NDVI Pixels",
     subtitle      = "300 sampled pixels with marginal cluster distributions",
     xlab          = "NDVI (winter)",
     ylab          = "NDVI (summer)",
