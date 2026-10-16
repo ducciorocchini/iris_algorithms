@@ -40,8 +40,7 @@ names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
 # Clustering
 
 `imageRy::im.classify()` accepts at most three bands, so the clustering
-uses winter, spring and summer NDVI. The autumn image is loaded but held
-back; it does not contribute to the cluster assignment.
+uses winter, spring and summer NDVI.
 
 ``` r
 ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
@@ -68,7 +67,7 @@ im.scatter <- function(
     colours       = c(A = "#011959", B = "#D68A00", C = "#A3311D"),
     shapes        = c(A = 16, B = 17, C = 15),
     labels        = c("A", "B", "C"),
-    title         = "Spectral Scatterplot of Classified NDVI Pixels",
+    title         = "Scatterplot of Classified NDVI Pixels",
     subtitle      = "300 sampled pixels with marginal cluster distributions",
     xlab          = "NDVI (winter)",
     ylab          = "NDVI (summer)",
