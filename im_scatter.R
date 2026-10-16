@@ -1,5 +1,5 @@
 # im_scatter_run.R
-# Spectral scatterplot with marginal densities.
+# Scatterplot with marginal densities.
 # Uses the four NDVI scenes bundled with imageRy.
 
 
