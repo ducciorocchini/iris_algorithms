@@ -1,4 +1,4 @@
-Spectral Scatterplot with Marginal Densities Using im.scatter function
+Scatterplot with Marginal Densities Using im.scatter function
 ================
 Iris Nana Obeng
 16 October 2026
