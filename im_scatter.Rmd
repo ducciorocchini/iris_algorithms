@@ -1,5 +1,5 @@
 ---
-title: "Spectral Scatterplot with Marginal Densities Using im.scatter function"
+title: "Scatterplot with Marginal Densities Using im.scatter function"
 author: "Iris Nana Obeng"
 date: "`r format(Sys.Date(), '%d %B %Y')`"
 output: github_document
