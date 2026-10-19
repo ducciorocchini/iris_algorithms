@@ -1,5 +1,6 @@
 # im_scatter_run.R
 # Scatterplot with marginal densities.
+# Works with any number of clusters.
 # Uses the four NDVI scenes bundled with imageRy.
 
 
@@ -10,21 +11,20 @@ library(dplyr)
 library(cowplot)
 
 
-
 im.scatter <- function(
     band_x,
     band_y,
     classified,
-    n_sample      = 300,
-    seed_sample   = 1,
-    colours       = c(A = "#011959", B = "#D68A00", C = "#A3311D"),
-    shapes        = c(A = 16, B = 17, C = 15),
-    labels        = c("A", "B", "C"),
-    title         = "Scatterplot of Classified NDVI Pixels",
-    subtitle      = "300 sampled pixels with marginal cluster distributions",
-    xlab          = "NDVI (winter)",
-    ylab          = "NDVI (summer)",
-    marginal_pt   = 3 * 14
+    n_sample    = 300,
+    seed_sample = 1,
+    colours     = NULL,
+    shapes      = NULL,
+    labels      = NULL,
+    title       = "Scatterplot of Classified NDVI Pixels",
+    subtitle    = "300 sampled pixels with marginal cluster distributions",
+    xlab        = "NDVI (winter)",
+    ylab        = "NDVI (summer)",
+    marginal_pt = 3 * 14
 ) {
   
   if (!terra::compareGeom(band_x, band_y,     stopOnError = FALSE) ||
@@ -43,18 +43,46 @@ im.scatter <- function(
   
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
   
+  #  Number of clusters 
   cluster_sizes <- pixel_data |>
     dplyr::count(Cluster, sort = TRUE)
   
-  if (nrow(cluster_sizes) != length(labels)) {
+  n_clusters <- nrow(cluster_sizes)
+  
+  #  Labels:  A, B, C,... etc.
+  if (is.null(labels)) {
+    labels <- LETTERS[seq_len(n_clusters)]
+  }
+  if (length(labels) != n_clusters) {
     stop(sprintf("Found %d clusters but %d labels supplied.",
-                 nrow(cluster_sizes), length(labels)))
+                 n_clusters, length(labels)))
   }
   
   pixel_data <- pixel_data |>
     dplyr::mutate(
       Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
+  
+  # --- Colours: cycle to fit n_clusters -------------------------------
+  if (is.null(colours)) {
+    base_palette <- c("#011959", "#D68A00", "#A3311D",
+                      "#2E8B57", "#6A0DAD", "#C71585",
+                      "#4682B4", "#B8860B", "#8B4513",
+                      "#3CB371")
+    colours <- stats::setNames(
+      rep(base_palette, length.out = n_clusters),
+      labels
+    )
+  }
+  
+  # Shapes: cycle to fit n_clusters 
+  if (is.null(shapes)) {
+    base_shapes <- c(16, 17, 15, 18, 8, 3, 4, 1, 2, 0)
+    shapes <- stats::setNames(
+      rep(base_shapes, length.out = n_clusters),
+      labels
+    )
+  }
   
   set.seed(seed_sample)
   plot_data <- if (nrow(pixel_data) > n_sample) {
@@ -106,32 +134,21 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
   
+ 
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
-    dplyr::ungroup() |>
+    dplyr::ungroup()
+  
+  y_span <- diff(range(x_dens$density, na.rm = TRUE))
+  
+  x_peaks <- x_peaks |>
     dplyr::mutate(
       label   = Cluster_Label,
-      hjust   = dplyr::case_when(
-        Cluster_Label == "A" ~ 0,
-        Cluster_Label == "B" ~ 0.5,
-        Cluster_Label == "C" ~ 0
-      ),
-      vjust   = dplyr::case_when(
-        Cluster_Label == "A" ~ 1,
-        Cluster_Label == "B" ~ 0,
-        Cluster_Label == "C" ~ 1
-      ),
-      nudge_x = dplyr::case_when(
-        Cluster_Label == "A" ~ 0.003,
-        Cluster_Label == "B" ~ 0,
-        Cluster_Label == "C" ~ 0.003
-      ),
-      nudge_y = dplyr::case_when(
-        Cluster_Label == "A" ~ 1,
-        Cluster_Label == "B" ~ 2,
-        Cluster_Label == "C" ~ 1
-      )
+      hjust   = 0.5,
+      vjust   = 0,
+      nudge_x = 0,
+      nudge_y = y_span * 0.05
     )
   
   xdens <- cowplot::axis_canvas(main_plot, axis = "x") +
@@ -152,12 +169,12 @@ im.scatter <- function(
       ggplot2::aes(x = value + nudge_x, y = density + nudge_y,
                    label = label, hjust = hjust, vjust = vjust,
                    colour = Cluster_Label),
-      size = 13 / ggplot2::.pt, fontface = "bold", inherit.aes = FALSE
+      size = 11 / ggplot2::.pt, fontface = "bold", inherit.aes = FALSE
     ) +
     ggplot2::scale_colour_manual(values = colours, guide = "none") +
     ggplot2::scale_fill_manual(  values = colours, guide = "none") +
     ggplot2::scale_y_continuous(
-      limits = c(0, max(x_dens$density) * 1.35),
+      limits = c(0, max(x_dens$density) * 1.25),
       expand = c(0, 0)
     ) +
     ggplot2::coord_cartesian(clip = "off")
@@ -197,7 +214,7 @@ im.scatter <- function(
 }
 
 
-# --- Load NDVI data ----------------------------------------------------
+# NDVI data loaded 
 ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
 ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
 ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
@@ -207,7 +224,7 @@ ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
 names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
 
 
-# --- Cluster on three bands --------------------------------------------
+# Cluster on three bands 
 ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
 names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
 
@@ -220,13 +237,11 @@ classified <- im.classify(
 )
 
 
-
 figure <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
   band_y     = ndvi_stack[["Summer"]],
   classified = classified
 )
-
 
 
 ggsave(
