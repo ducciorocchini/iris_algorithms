@@ -1,7 +1,23 @@
-Scatterplot with Marginal Densities Using im.scatter function
+im.scatter: Scatterplot with Marginal Densities
 ================
 Iris Nana Obeng
-16 October 2026
+19 October 2026
+
+# Overview
+
+`im.scatter()` draws a spectral scatterplot with marginal density curves
+attached to the top and right edges. Cluster identities are labelled
+directly on the top density curve, following the marginal-density
+approach described by Claus O. Wilke in *Fundamentals of Data
+Visualization*.
+
+The function works with any number of clusters — labels, colours and
+shapes are generated automatically from the classification.
+
+This document uses the four NDVI scenes bundled with `imageRy`, so it
+knits without any external data downloads.
+
+# Packages
 
 ``` r
 library(imageRy)
@@ -11,50 +27,6 @@ library(dplyr)
 library(cowplot)
 ```
 
-# Introduction
-
-This document demonstrates `im.scatter()`, a reusable function that
-draws a spectral scatterplot with marginal density curves attached to
-the top and right edges. Cluster identities are labelled directly on the
-top density.
-
-The example uses four NDVI composites from 2020 that are bundled with
-`imageRy`, so the document knits without any external downloads.
-
-# Data
-
-The four NDVI scenes represent winter, spring, summer and autumn of
-2020. They are loaded with `im.import()`, which resolves the file paths
-inside the `imageRy` package.
-
-``` r
-ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
-ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
-ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
-ndvi_autumn <- im.import("Sentinel2_NDVI_2020-11-27.tif")
-
-ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
-names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
-```
-
-# Clustering
-
-`imageRy::im.classify()` accepts at most three bands, so the clustering
-uses winter, spring and summer NDVI.
-
-``` r
-ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
-names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
-
-set.seed(42)
-classified <- im.classify(
-  ndvi_for_clustering,
-  num_clusters = 3,
-  seed = 42,
-  do_plot = FALSE
-)
-```
-
 # The function
 
 ``` r
@@ -62,16 +34,16 @@ im.scatter <- function(
     band_x,
     band_y,
     classified,
-    n_sample      = 300,
-    seed_sample   = 1,
-    colours       = c(A = "#011959", B = "#D68A00", C = "#A3311D"),
-    shapes        = c(A = 16, B = 17, C = 15),
-    labels        = c("A", "B", "C"),
-    title         = "Scatterplot of Classified NDVI Pixels",
-    subtitle      = "300 sampled pixels with marginal cluster distributions",
-    xlab          = "NDVI (winter)",
-    ylab          = "NDVI (summer)",
-    marginal_pt   = 3 * 14
+    n_sample    = 300,
+    seed_sample = 1,
+    colours     = NULL,
+    shapes      = NULL,
+    labels      = NULL,
+    title       = "Scatterplot of Classified NDVI Pixels",
+    subtitle    = "300 sampled pixels with marginal cluster distributions",
+    xlab        = "NDVI (winter)",
+    ylab        = "NDVI (summer)",
+    marginal_pt = 3 * 14
 ) {
 
   if (!terra::compareGeom(band_x, band_y,     stopOnError = FALSE) ||
@@ -90,18 +62,46 @@ im.scatter <- function(
 
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
 
+  #  Number of clusters 
   cluster_sizes <- pixel_data |>
     dplyr::count(Cluster, sort = TRUE)
 
-  if (nrow(cluster_sizes) != length(labels)) {
+  n_clusters <- nrow(cluster_sizes)
+
+  #  Labels: A, B, C, ... as needed 
+  if (is.null(labels)) {
+    labels <- LETTERS[seq_len(n_clusters)]
+  }
+  if (length(labels) != n_clusters) {
     stop(sprintf("Found %d clusters but %d labels supplied.",
-                 nrow(cluster_sizes), length(labels)))
+                 n_clusters, length(labels)))
   }
 
   pixel_data <- pixel_data |>
     dplyr::mutate(
       Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
+
+  # Colours: cycle to fit n_clusters 
+  if (is.null(colours)) {
+    base_palette <- c("#011959", "#D68A00", "#A3311D",
+                      "#2E8B57", "#6A0DAD", "#C71585",
+                      "#4682B4", "#B8860B", "#8B4513",
+                      "#3CB371")
+    colours <- stats::setNames(
+      rep(base_palette, length.out = n_clusters),
+      labels
+    )
+  }
+
+  # Shapes: cycle to fit n_clusters 
+  if (is.null(shapes)) {
+    base_shapes <- c(16, 17, 15, 18, 8, 3, 4, 1, 2, 0)
+    shapes <- stats::setNames(
+      rep(base_shapes, length.out = n_clusters),
+      labels
+    )
+  }
 
   set.seed(seed_sample)
   plot_data <- if (nrow(pixel_data) > n_sample) {
@@ -153,32 +153,21 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
 
+  #  Peak positions for labels 
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
-    dplyr::ungroup() |>
+    dplyr::ungroup()
+
+  y_span <- diff(range(x_dens$density, na.rm = TRUE))
+
+  x_peaks <- x_peaks |>
     dplyr::mutate(
       label   = Cluster_Label,
-      hjust   = dplyr::case_when(
-        Cluster_Label == "A" ~ 0,
-        Cluster_Label == "B" ~ 0.5,
-        Cluster_Label == "C" ~ 0
-      ),
-      vjust   = dplyr::case_when(
-        Cluster_Label == "A" ~ 1,
-        Cluster_Label == "B" ~ 0,
-        Cluster_Label == "C" ~ 1
-      ),
-      nudge_x = dplyr::case_when(
-        Cluster_Label == "A" ~ 0.003,
-        Cluster_Label == "B" ~ 0,
-        Cluster_Label == "C" ~ 0.003
-      ),
-      nudge_y = dplyr::case_when(
-        Cluster_Label == "A" ~ 1,
-        Cluster_Label == "B" ~ 2,
-        Cluster_Label == "C" ~ 1
-      )
+      hjust   = 0.5,
+      vjust   = 0,
+      nudge_x = 0,
+      nudge_y = y_span * 0.05
     )
 
   xdens <- cowplot::axis_canvas(main_plot, axis = "x") +
@@ -199,12 +188,12 @@ im.scatter <- function(
       ggplot2::aes(x = value + nudge_x, y = density + nudge_y,
                    label = label, hjust = hjust, vjust = vjust,
                    colour = Cluster_Label),
-      size = 13 / ggplot2::.pt, fontface = "bold", inherit.aes = FALSE
+      size = 11 / ggplot2::.pt, fontface = "bold", inherit.aes = FALSE
     ) +
     ggplot2::scale_colour_manual(values = colours, guide = "none") +
     ggplot2::scale_fill_manual(  values = colours, guide = "none") +
     ggplot2::scale_y_continuous(
-      limits = c(0, max(x_dens$density) * 1.35),
+      limits = c(0, max(x_dens$density) * 1.25),
       expand = c(0, 0)
     ) +
     ggplot2::coord_cartesian(clip = "off")
@@ -244,10 +233,38 @@ im.scatter <- function(
 }
 ```
 
-Winter NDVI is placed on the x-axis and summer NDVI on the y-axis.
-Pixels along the 1:1 line show little seasonal change; pixels above it
-green up in summer; pixels below it lose vegetation between winter and
-summer.
+# NDVI data from ImageRy
+
+``` r
+ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
+ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
+ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
+ndvi_autumn <- im.import("Sentinel2_NDVI_2020-11-27.tif")
+
+ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
+names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
+```
+
+# Clustering the data
+
+`imageRy::im.classify()` accepts at most three bands, so the clustering
+uses winter, spring and summer NDVI. The autumn scene is loaded but does
+not contribute to the cluster assignment.
+
+``` r
+ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
+names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
+
+set.seed(42)
+classified <- im.classify(
+  ndvi_for_clustering,
+  num_clusters = 3,
+  seed = 42,
+  do_plot = FALSE
+)
+```
+
+# Build the figure
 
 ``` r
 figure <- im.scatter(
@@ -256,6 +273,8 @@ figure <- im.scatter(
   classified = classified
 )
 ```
+
+<img src="im_scatter_files/figure-gfm/display-figure-1.png" width="100%" />
 
 ``` r
 ggsave(
@@ -267,22 +286,31 @@ ggsave(
 )
 ```
 
-<img src="im_scatter_files/figure-gfm/display-figure-1.png" width="100%" />
+# Flexibility: any number of clusters
 
-# Interpretation
+`im.scatter()` reads the cluster count from the `classified` raster and
+generates labels (`A`, `B`, `C`, …), colours and point shapes
+accordingly. The same pipeline, run with `num_clusters = 6`, produces
+the figure below:
 
-The scatterplot shows the joint distribution of winter and summer NDVI
-for 300 sampled pixels. Cluster A, B and C occupy different regions of
-this space, indicating different seasonal vegetation behaviour.
+``` r
+classified_6 <- im.classify(
+  ndvi_for_clustering,
+  num_clusters = 6,
+  seed = 42,
+  do_plot = FALSE
+)
 
-The top marginal density shows how winter NDVI is distributed within
-each cluster. The right marginal shows the corresponding summer NDVI
-distribution. Cluster letters are placed at the peaks of the top
-density, so no separate legend is needed.
+figure_6 <- im.scatter(
+  band_x     = ndvi_stack[["Winter"]],
+  band_y     = ndvi_stack[["Summer"]],
+  classified = classified_6
+)
 
-The clusters are the result of unsupervised k-means on three NDVI scenes
-(winter, spring, summer). They are descriptive groupings, not validated
-land-cover classes.
+figure_6
+```
+
+<img src="im_scatter_files/figure-gfm/example-six-clusters-1.png" width="100%" />
 
 # Author
 
