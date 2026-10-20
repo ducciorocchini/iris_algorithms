@@ -1,7 +1,7 @@
 im.scatter: Scatterplot with Marginal Densities
 ================
 Iris Nana Obeng
-19 October 2026
+20 October 2026
 
 # Overview
 
@@ -12,7 +12,9 @@ approach described by Claus O. Wilke in *Fundamentals of Data
 Visualization*.
 
 The function works with any number of clusters — labels, colours and
-shapes are generated automatically from the classification.
+shapes are generated automatically from the classification. Cluster
+colours match those used by `imageRy::im.classify()` when it plots the
+classification.
 
 This document uses the four NDVI scenes bundled with `imageRy`, so it
 knits without any external data downloads.
@@ -62,7 +64,7 @@ im.scatter <- function(
 
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
 
-  #  Number of clusters 
+  # Number of clusters 
   cluster_sizes <- pixel_data |>
     dplyr::count(Cluster, sort = TRUE)
 
@@ -82,16 +84,10 @@ im.scatter <- function(
       Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
 
-  # Colours: cycle to fit n_clusters 
+  #  Colours: match imageRy::im.classify() default palette 
   if (is.null(colours)) {
-    base_palette <- c("#011959", "#D68A00", "#A3311D",
-                      "#2E8B57", "#6A0DAD", "#C71585",
-                      "#4682B4", "#B8860B", "#8B4513",
-                      "#3CB371")
-    colours <- stats::setNames(
-      rep(base_palette, length.out = n_clusters),
-      labels
-    )
+    auto_colours <- scales::hue_pal()(n_clusters)
+    colours <- stats::setNames(auto_colours, labels)
   }
 
   # Shapes: cycle to fit n_clusters 
@@ -153,7 +149,7 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
 
-  #  Peak positions for labels 
+  # Peak positions for labels 
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
@@ -233,7 +229,7 @@ im.scatter <- function(
 }
 ```
 
-# NDVI data from ImageRy
+# NDVI data from imageRy
 
 ``` r
 ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
@@ -264,8 +260,6 @@ classified <- im.classify(
 )
 ```
 
-# Build the figure
-
 ``` r
 figure <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
@@ -291,7 +285,7 @@ ggsave(
 `im.scatter()` reads the cluster count from the `classified` raster and
 generates labels (`A`, `B`, `C`, …), colours and point shapes
 accordingly. The same pipeline, run with `num_clusters = 6`, produces
-the figure below:
+the figure below — no changes to the function or the call site.
 
 ``` r
 classified_6 <- im.classify(
@@ -311,6 +305,40 @@ figure_6
 ```
 
 <img src="im_scatter_files/figure-gfm/example-six-clusters-1.png" width="100%" />
+
+# Interpretation
+
+The first figure shows the joint distribution of winter and summer NDVI
+for 300 sampled pixels, coloured by their cluster assignment. Clusters
+occupy different regions of this space, indicating different seasonal
+vegetation behaviour. Pixels along the 1:1 line show little seasonal
+change, while those above or below it gain or lose vegetation between
+winter and summer.
+
+The top marginal density shows how winter NDVI is distributed within
+each cluster. The right marginal shows the corresponding summer NDVI
+distribution. Cluster letters are placed at the peaks of the top
+density, so no separate legend is needed.
+
+**Colour consistency.** The colours used in the scatterplot, the density
+ribbons and the marginal curves are generated with `scales::hue_pal()`,
+which is the same palette `ggplot2` uses by default and therefore the
+same palette `imageRy::im.classify()` uses when it plots the
+classification map. A cluster shown in one colour on the scatterplot
+corresponds to the same colour on the map, so the two figures can be
+read side by side without a separate legend. Passing a custom `colours`
+vector to `im.scatter()` overrides this default if a different palette
+is wanted.
+
+The second figure repeats the same pipeline with `num_clusters = 6`. The
+labels (`A`–`F`), colours and point shapes are generated automatically
+from the classification, so the function adapts to any cluster count
+without changes at the call site. With more clusters, the density curves
+on the top marginal begin to overlap, but each cluster remains
+identifiable by its colour.
+
+The clusters are the result of unsupervised k-means. They are
+descriptive groupings, not validated land-cover classes.
 
 # Author
 
