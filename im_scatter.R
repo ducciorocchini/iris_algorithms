@@ -1,7 +1,7 @@
 # im_scatter_run.R
 # Scatterplot with marginal densities.
 # Works with any number of clusters.
-# Cluster colours match imageRy::im.classify() by default.
+# Cluster colours match imageRy::im.classify() 
 
 
 library(imageRy)
@@ -43,15 +43,14 @@ im.scatter <- function(
   
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
   
-  # Number of clusters 
-  cluster_sizes <- pixel_data |>
-    dplyr::count(Cluster, sort = TRUE)
+  # Cluster IDs present, sorted numerically 
+  cluster_ids <- sort(unique(pixel_data$Cluster))
+  n_clusters  <- length(cluster_ids)
   
-  n_clusters <- nrow(cluster_sizes)
   
-  #  Labels: A, B, C, ... as needed 
+  # Labels: default to the cluster ID 
   if (is.null(labels)) {
-    labels <- LETTERS[seq_len(n_clusters)]
+    labels <- as.character(cluster_ids)
   }
   if (length(labels) != n_clusters) {
     stop(sprintf("Found %d clusters but %d labels supplied.",
@@ -60,14 +59,19 @@ im.scatter <- function(
   
   pixel_data <- pixel_data |>
     dplyr::mutate(
-      Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
+      Cluster_Label = labels[match(Cluster, cluster_ids)]
     )
   
-  # Colours: match imageRy::im.classify() default palette 
+  # --- Colours: match imageRy::im.classify() exactly
   if (is.null(colours)) {
-   
-    auto_colours <- scales::hue_pal()(n_clusters)
-    colours <- stats::setNames(auto_colours, labels)
+    base_colors <- c("khaki", "slateblue", "olivedrab", "salmon",
+                     "lightpink", "darkgrey")
+    pal <- if (n_clusters > length(base_colors)) {
+      grDevices::colorRampPalette(base_colors)(n_clusters)
+    } else {
+      base_colors[seq_len(n_clusters)]
+    }
+    colours <- stats::setNames(pal, labels)
   }
   
   # Shapes: cycle to fit n_clusters 
@@ -129,7 +133,6 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
   
-  # --- Peak positions for labels --------------------------------------
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
@@ -209,7 +212,7 @@ im.scatter <- function(
 }
 
 
-# Load NDVI data 
+# NDVI data from imageRy
 ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
 ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
 ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
@@ -219,7 +222,8 @@ ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
 names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
 
 
-# Cluster on three bands 
+
+# Cluster on three bands
 ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
 names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
 
@@ -232,13 +236,12 @@ classified <- im.classify(
 )
 
 
-# Build the figure 
+# 
 figure <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
   band_y     = ndvi_stack[["Summer"]],
   classified = classified
 )
-
 
 ggsave(
   "ndvi_scatterplot_marginals.png",
@@ -248,11 +251,10 @@ ggsave(
   dpi    = 300
 )
 
-
 print(figure)
 
 
-# Demonstration: same pipeline with 6 clusters 
+# Demonstration: 6 clusters 
 classified_6 <- im.classify(
   ndvi_for_clustering,
   num_clusters = 6,
