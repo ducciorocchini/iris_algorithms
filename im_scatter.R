@@ -1,7 +1,7 @@
 # im_scatter_run.R
 # Scatterplot with marginal densities.
 # Works with any number of clusters.
-# Uses the four NDVI scenes bundled with imageRy.
+# Cluster colours match imageRy::im.classify() by default.
 
 
 library(imageRy)
@@ -43,13 +43,13 @@ im.scatter <- function(
   
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
   
-  #  Number of clusters 
+  # Number of clusters 
   cluster_sizes <- pixel_data |>
     dplyr::count(Cluster, sort = TRUE)
   
   n_clusters <- nrow(cluster_sizes)
   
-  #  Labels:  A, B, C,... etc.
+  #  Labels: A, B, C, ... as needed 
   if (is.null(labels)) {
     labels <- LETTERS[seq_len(n_clusters)]
   }
@@ -63,16 +63,11 @@ im.scatter <- function(
       Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
   
-  # --- Colours: cycle to fit n_clusters -------------------------------
+  # Colours: match imageRy::im.classify() default palette 
   if (is.null(colours)) {
-    base_palette <- c("#011959", "#D68A00", "#A3311D",
-                      "#2E8B57", "#6A0DAD", "#C71585",
-                      "#4682B4", "#B8860B", "#8B4513",
-                      "#3CB371")
-    colours <- stats::setNames(
-      rep(base_palette, length.out = n_clusters),
-      labels
-    )
+   
+    auto_colours <- scales::hue_pal()(n_clusters)
+    colours <- stats::setNames(auto_colours, labels)
   }
   
   # Shapes: cycle to fit n_clusters 
@@ -134,7 +129,7 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
   
- 
+  # --- Peak positions for labels --------------------------------------
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
@@ -214,7 +209,7 @@ im.scatter <- function(
 }
 
 
-# NDVI data loaded 
+# Load NDVI data 
 ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
 ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
 ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
@@ -237,6 +232,7 @@ classified <- im.classify(
 )
 
 
+# Build the figure 
 figure <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
   band_y     = ndvi_stack[["Summer"]],
@@ -254,3 +250,28 @@ ggsave(
 
 
 print(figure)
+
+
+# Demonstration: same pipeline with 6 clusters 
+classified_6 <- im.classify(
+  ndvi_for_clustering,
+  num_clusters = 6,
+  seed = 42,
+  do_plot = FALSE
+)
+
+figure_6 <- im.scatter(
+  band_x     = ndvi_stack[["Winter"]],
+  band_y     = ndvi_stack[["Summer"]],
+  classified = classified_6
+)
+
+ggsave(
+  "ndvi_scatterplot_marginals_6clusters.png",
+  plot   = figure_6,
+  width  = 9,
+  height = 7,
+  dpi    = 300
+)
+
+print(figure_6)
