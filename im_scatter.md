@@ -1,7 +1,7 @@
 im.scatter: Scatterplot with Marginal Densities
 ================
 Iris Nana Obeng
-22 October 2026
+23 October 2026
 
 # Overview
 
@@ -336,7 +336,7 @@ im.classify(
     ## extent      : 648990, 654540, 5120440, 5125720  (xmin, xmax, ymin, ymax)
     ## coord. ref. : WGS 84 / UTM zone 32N (EPSG:32632) 
     ## source(s)   : memory
-    ## varname     : file17732483bf765 
+    ## varname     : file178bf46aec59f 
     ## name        : Winter 
     ## min value   :      1 
     ## max value   :      3
