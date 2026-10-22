@@ -1,22 +1,21 @@
 im.scatter: Scatterplot with Marginal Densities
 ================
 Iris Nana Obeng
-20 October 2026
+22 October 2026
 
 # Overview
 
 `im.scatter()` draws a spectral scatterplot with marginal density curves
 attached to the top and right edges. Cluster identities are labelled
 directly on the top density curve, following the marginal-density
-approach described by Claus O. Wilke in *Fundamentals of Data
-Visualization*.
+approach described by Claus O. Wilke in Fundamentals of Data
+Visualization.
 
-The function works with any number of clusters, and the colours match
-the palette used by `imageRy::im.classify()` so the scatterplot and the
-classification map share the same legend.
+The function works with any number of clusters, and its colours are
+taken from `imageRy::im.classify()`’s legend, so the scatterplot and the
+classification map share the same palette.
 
-This document uses the four NDVI scenes bundled with `imageRy`, so it
-knits without any external data downloads.
+This document uses the four NDVI scenes from `imageRy`.
 
 # Packages
 
@@ -62,16 +61,16 @@ im.scatter <- function(
     dplyr::filter(!is.na(X), !is.na(Y), !is.na(Cluster))
 
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
-  
 
-  # Cluster IDs present, sorted numerically 
-  cluster_ids <- sort(unique(pixel_data$Cluster))
-  n_clusters  <- length(cluster_ids)
+  # Number of clusters
+  cluster_sizes <- pixel_data |>
+    dplyr::count(Cluster, sort = TRUE)
 
-  
-  # Labels: default to the cluster ID  
+  n_clusters <- nrow(cluster_sizes)
+
+  # Labels: A, B, C, ... assigned by cluster abundance
   if (is.null(labels)) {
-    labels <- as.character(cluster_ids)
+    labels <- LETTERS[seq_len(n_clusters)]
   }
   if (length(labels) != n_clusters) {
     stop(sprintf("Found %d clusters but %d labels supplied.",
@@ -80,22 +79,28 @@ im.scatter <- function(
 
   pixel_data <- pixel_data |>
     dplyr::mutate(
-      Cluster_Label = labels[match(Cluster, cluster_ids)]
+      Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
 
-  # Colours: match imageRy::im.classify() exactly 
+  # Colours: take the palette from im.classify()'s legend
   if (is.null(colours)) {
-    base_colors <- c("khaki", "slateblue", "olivedrab", "salmon",
-                     "lightpink", "darkgrey")
-    pal <- if (n_clusters > length(base_colors)) {
-      grDevices::colorRampPalette(base_colors)(n_clusters)
+    stored_pal <- attr(classified, "palette")
+
+    if (!is.null(stored_pal)) {
+      colours <- stats::setNames(stored_pal, labels)
     } else {
-      base_colors[seq_len(n_clusters)]
+      base_palette <- c("#011959", "#D68A00", "#A3311D",
+                        "#2E8B57", "#6A0DAD", "#C71585",
+                        "#4682B4", "#B8860B", "#8B4513",
+                        "#3CB371")
+      colours <- stats::setNames(
+        rep(base_palette, length.out = n_clusters),
+        labels
+      )
     }
-    colours <- stats::setNames(pal, labels)
   }
 
-  # Shapes: cycle to fit n_clusters 
+  # Shapes: cycle to fit n_clusters
   if (is.null(shapes)) {
     base_shapes <- c(16, 17, 15, 18, 8, 3, 4, 1, 2, 0)
     shapes <- stats::setNames(
@@ -154,7 +159,7 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
 
-  # Peak positions for labels 
+  # Peak positions for labels
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
@@ -234,7 +239,7 @@ im.scatter <- function(
 }
 ```
 
-# NDVI data from imageRy
+# NDVI Data from ImageRy
 
 ``` r
 ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
@@ -246,11 +251,28 @@ ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
 names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
 ```
 
+# A shared palette
+
+One palette is used throughout for the classification map and for the
+scatterplot so both figures share the same legend.
+
+``` r
+cluster_colours <- c("#011959", "#D68A00", "#A3311D",
+                     "#2E8B57", "#6A0DAD", "#C71585",
+                     "#4682B4", "#B8860B", "#8B4513",
+                     "#3CB371")
+```
+
 # Clustering the data
 
 `imageRy::im.classify()` accepts at most three bands, so the clustering
 uses winter, spring and summer NDVI. The autumn scene is loaded but does
 not contribute to the cluster assignment.
+
+The palette is passed to `im.classify(custom_colors = ...)` so the
+classification map uses the same colours as the scatterplot, and it is
+attached to the returned raster so `im.scatter()` can read it back
+directly.
 
 ``` r
 ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
@@ -259,10 +281,12 @@ names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
 set.seed(42)
 classified <- im.classify(
   ndvi_for_clustering,
-  num_clusters = 3,
-  seed = 42,
-  do_plot = FALSE
+  num_clusters  = 3,
+  seed          = 42,
+  do_plot       = FALSE,
+  custom_colors = cluster_colours[1:3]
 )
+attr(classified, "palette") <- cluster_colours[1:3]
 ```
 
 ``` r
@@ -285,20 +309,54 @@ ggsave(
 )
 ```
 
+# Colour consistency with the classification map
+
+The scatterplot and the classification map share the same palette. The
+map is produced by `im.classify(custom_colors = cluster_colours[1:3])`,
+so its legend uses the same three colours as the scatterplot.
+
+The chunk below draws the classification map so it can be compared with
+the scatterplot sharing the same colours.
+
+``` r
+im.classify(
+  ndvi_for_clustering,
+  num_clusters  = 3,
+  seed          = 42,
+  do_plot       = TRUE,
+  custom_colors = cluster_colours[1:3]
+)
+```
+
+<img src="im_scatter_files/figure-gfm/classification-map-1.png" width="100%" />
+
+    ## class       : SpatRaster 
+    ## size        : 528, 555, 1  (nrow, ncol, nlyr)
+    ## resolution  : 10, 10  (x, y)
+    ## extent      : 648990, 654540, 5120440, 5125720  (xmin, xmax, ymin, ymax)
+    ## coord. ref. : WGS 84 / UTM zone 32N (EPSG:32632) 
+    ## source(s)   : memory
+    ## varname     : file17732483bf765 
+    ## name        : Winter 
+    ## min value   :      1 
+    ## max value   :      3
+
 # Flexibility: any number of clusters
 
 `im.scatter()` reads the cluster count from the `classified` raster and
-generates labels (`1`, `2`, `3`, …), colours and point shapes
+generates labels (`A`, `B`, `C`, …), colours and point shapes
 accordingly. The same pipeline, run with `num_clusters = 6`, produces
 the figure below — no changes to the function or the call site.
 
 ``` r
 classified_6 <- im.classify(
   ndvi_for_clustering,
-  num_clusters = 6,
-  seed = 42,
-  do_plot = FALSE
+  num_clusters  = 6,
+  seed          = 42,
+  do_plot       = FALSE,
+  custom_colors = cluster_colours[1:6]
 )
+attr(classified_6, "palette") <- cluster_colours[1:6]
 
 figure_6 <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
@@ -322,22 +380,20 @@ winter and summer.
 
 The top marginal density shows how winter NDVI is distributed within
 each cluster. The right marginal shows the corresponding summer NDVI
-distribution. Cluster labels are placed at the peaks of the top density,
-so no separate legend is needed.
+distribution. Cluster letters are placed at the peaks of the top
+density, so no separate legend is needed.
 
 Colour consistency: The colours used in the scatterplot, the density
-ribbons and the marginal curves are the same base colours that
-`imageRy::im.classify()` uses when it plots the classification map —
-`khaki`, `slateblue`, `olivedrab`, `salmon`, `lightpink` and `darkgrey`,
-with `colorRampPalette` interpolation when more than six clusters are
-present. Colours are keyed by cluster ID, so cluster 1 on the
-scatterplot is the same colour as cluster 1 on the map. The two figures
-can therefore be read side by side without a separate legend. Passing a
-custom `colours` vector to `im.scatter()` overrides this default if a
-different palette is wanted.
+ribbons and the marginal curves come from `im.classify()`’s legend. The
+palette is passed to `im.classify(custom_colors = cluster_colours)` and
+attached to the returned raster, and `im.scatter()` reads it from there.
+A cluster shown in one colour in the scatterplot is the same colour on
+the classification map, so the two figures can be read side by side
+without a separate legend. Passing a custom `colours` vector to
+`im.scatter()` overrides this default if a different palette is wanted.
 
 The second figure repeats the same pipeline with `num_clusters = 6`. The
-labels (`1`–`6`), colours and point shapes are generated automatically
+labels (`A`–`F`), colours and point shapes are generated automatically
 from the classification, so the function adapts to any cluster count
 without changes at the call site. With more clusters, the density curves
 on the top marginal begin to overlap, but each cluster remains
