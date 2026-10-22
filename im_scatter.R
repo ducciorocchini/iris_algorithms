@@ -1,7 +1,7 @@
 # im_scatter_run.R
 # Scatterplot with marginal densities.
 # Works with any number of clusters.
-# Cluster colours match imageRy::im.classify() 
+# Scatter colours come from im.classify()'s legend using same palette.
 
 
 library(imageRy)
@@ -43,14 +43,15 @@ im.scatter <- function(
   
   if (nrow(pixel_data) == 0) stop("No valid pixels found.")
   
-  # Cluster IDs present, sorted numerically 
-  cluster_ids <- sort(unique(pixel_data$Cluster))
-  n_clusters  <- length(cluster_ids)
+  # Number of clusters
+  cluster_sizes <- pixel_data |>
+    dplyr::count(Cluster, sort = TRUE)
   
+  n_clusters <- nrow(cluster_sizes)
   
-  # Labels: default to the cluster ID 
+  # Labels: A, B, C, ... assigned by cluster abundance
   if (is.null(labels)) {
-    labels <- as.character(cluster_ids)
+    labels <- LETTERS[seq_len(n_clusters)]
   }
   if (length(labels) != n_clusters) {
     stop(sprintf("Found %d clusters but %d labels supplied.",
@@ -59,22 +60,28 @@ im.scatter <- function(
   
   pixel_data <- pixel_data |>
     dplyr::mutate(
-      Cluster_Label = labels[match(Cluster, cluster_ids)]
+      Cluster_Label = labels[match(Cluster, cluster_sizes$Cluster)]
     )
   
-  # --- Colours: match imageRy::im.classify() exactly
+  # Colours: take the palette from im.classify()'s legend
   if (is.null(colours)) {
-    base_colors <- c("khaki", "slateblue", "olivedrab", "salmon",
-                     "lightpink", "darkgrey")
-    pal <- if (n_clusters > length(base_colors)) {
-      grDevices::colorRampPalette(base_colors)(n_clusters)
+    stored_pal <- attr(classified, "palette")
+    
+    if (!is.null(stored_pal)) {
+      colours <- stats::setNames(stored_pal, labels)
     } else {
-      base_colors[seq_len(n_clusters)]
+      base_palette <- c("#011959", "#D68A00", "#A3311D",
+                        "#2E8B57", "#6A0DAD", "#C71585",
+                        "#4682B4", "#B8860B", "#8B4513",
+                        "#3CB371")
+      colours <- stats::setNames(
+        rep(base_palette, length.out = n_clusters),
+        labels
+      )
     }
-    colours <- stats::setNames(pal, labels)
   }
   
-  # Shapes: cycle to fit n_clusters 
+  # Shapes: cycle to fit n_clusters
   if (is.null(shapes)) {
     base_shapes <- c(16, 17, 15, 18, 8, 3, 4, 1, 2, 0)
     shapes <- stats::setNames(
@@ -133,6 +140,7 @@ im.scatter <- function(
     }) |>
     dplyr::ungroup()
   
+  # Peak positions for labels
   x_peaks <- x_dens |>
     dplyr::group_by(Cluster_Label) |>
     dplyr::filter(density == max(density)) |>
@@ -212,7 +220,7 @@ im.scatter <- function(
 }
 
 
-# NDVI data from imageRy
+# --- Load NDVI data --------------------------------------------------
 ndvi_winter <- im.import("Sentinel2_NDVI_2020-02-21.tif")
 ndvi_spring <- im.import("Sentinel2_NDVI_2020-05-21.tif")
 ndvi_summer <- im.import("Sentinel2_NDVI_2020-08-01.tif")
@@ -222,21 +230,29 @@ ndvi_stack <- c(ndvi_winter, ndvi_spring, ndvi_summer, ndvi_autumn)
 names(ndvi_stack) <- c("Winter", "Spring", "Summer", "Autumn")
 
 
+# --- Shared palette --------------------------------------------------
+cluster_colours <- c("#011959", "#D68A00", "#A3311D",
+                     "#2E8B57", "#6A0DAD", "#C71585",
+                     "#4682B4", "#B8860B", "#8B4513",
+                     "#3CB371")
 
-# Cluster on three bands
+
+# --- Cluster on three bands, using the shared palette ----------------
 ndvi_for_clustering <- c(ndvi_winter, ndvi_spring, ndvi_summer)
 names(ndvi_for_clustering) <- c("Winter", "Spring", "Summer")
 
 set.seed(42)
 classified <- im.classify(
   ndvi_for_clustering,
-  num_clusters = 3,
-  seed = 42,
-  do_plot = FALSE
+  num_clusters  = 3,
+  seed          = 42,
+  do_plot       = FALSE,
+  custom_colors = cluster_colours[1:3]
 )
+attr(classified, "palette") <- cluster_colours[1:3]
 
 
-# 
+# --- Build, save, and display the 3-cluster figure ------------------
 figure <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
   band_y     = ndvi_stack[["Summer"]],
@@ -254,13 +270,25 @@ ggsave(
 print(figure)
 
 
-# Demonstration: 6 clusters 
+# Classification map, for comparison 
+im.classify(
+  ndvi_for_clustering,
+  num_clusters  = 3,
+  seed          = 42,
+  do_plot       = TRUE,
+  custom_colors = cluster_colours[1:3]
+)
+
+
+# Demonstration: 6 clusters, same palette 
 classified_6 <- im.classify(
   ndvi_for_clustering,
-  num_clusters = 6,
-  seed = 42,
-  do_plot = FALSE
+  num_clusters  = 6,
+  seed          = 42,
+  do_plot       = FALSE,
+  custom_colors = cluster_colours[1:6]
 )
+attr(classified_6, "palette") <- cluster_colours[1:6]
 
 figure_6 <- im.scatter(
   band_x     = ndvi_stack[["Winter"]],
